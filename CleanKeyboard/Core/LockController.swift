@@ -28,21 +28,22 @@ final class LockController {
     private(set) var mode: LockMode = .keyboard
     private(set) var startedAt = Date()
     private(set) var deadline: Date?
-    private(set) var cleanedKeys: Set<UInt16> = []
-    /// Счётчик нажатий по клавише — триггер анимации вспышки.
-    private(set) var pulses: [UInt16: Int] = [:]
-    private(set) var pressCount = 0
+    /// Сколько клавиш схемы уже протёрто.
+    private(set) var cleanedCount = 0
     private(set) var secureInputActive = false
     /// Длительность завершённого сеанса — для экрана «Чисто!».
     private(set) var sessionLength: TimeInterval = 0
 
     let keyboardKind = KeyLayout.currentKind
     let countableCodes: Set<UInt16>
+    /// Состояние каждой клавиши схемы — вьюха клавиши наблюдает только за своим объектом.
+    let keyVisuals: [UInt16: KeyVisual]
 
-    @ObservationIgnored private let blocker = EventBlocker { code in
-        DispatchQueue.main.async {
-            MainActor.assumeIsolated { LockController.shared.registerPress(code) }
-        }
+    @ObservationIgnored private let presses = PressBuffer { batch in
+        LockController.shared.registerPresses(batch)
+    }
+    @ObservationIgnored private lazy var blocker = EventBlocker { [presses] code, isDown in
+        presses.add(code, isDown: isDown)
     }
     @ObservationIgnored private let overlay = OverlayWindowController()
     @ObservationIgnored private let sleepGuard = SleepGuard()
@@ -53,13 +54,13 @@ final class LockController {
 
     private init() {
         countableCodes = KeyLayout.countableCodes(for: keyboardKind)
+        keyVisuals = Dictionary(uniqueKeysWithValues: countableCodes.map { ($0, KeyVisual()) })
         observeSystemEvents()
     }
 
     var isActive: Bool { phase != .idle }
     var isLocked: Bool { phase == .locked }
 
-    var cleanedCount: Int { cleanedKeys.intersection(countableCodes).count }
     var totalKeys: Int { countableCodes.count }
 
     /// Время до автоснятия (по таймеру или по жёсткому пределу).
@@ -98,9 +99,7 @@ final class LockController {
 
         self.mode = mode ?? AppSettings.mode
         duration = AppSettings.duration
-        cleanedKeys = []
-        pulses = [:]
-        pressCount = 0
+        resetKeyVisuals()
         startedAt = .now
         deadline = nil
         savedCapsLock = CapsLockGuard.read()
@@ -196,7 +195,9 @@ final class LockController {
         mode = name == "full" ? .full : .keyboard
         startedAt = .now.addingTimeInterval(-17)
         deadline = .now.addingTimeInterval(43)
-        cleanedKeys = Set(countableCodes.shuffled().prefix(31))
+        resetKeyVisuals()
+        for code in countableCodes.shuffled().prefix(31) { keyVisuals[code]?.isCleaned = true }
+        cleanedCount = 31
         sessionLength = 72
         phase = switch name {
         case "countdown": .countdown(3)
@@ -204,6 +205,21 @@ final class LockController {
         default: .locked
         }
         overlay.show(controller: self)
+        if name == "mash" {
+            // Имитация «ладонью по клавиатуре»: пачки одновременных нажатий с фонового потока,
+            // как от настоящего тапа.
+            let codes = Array(countableCodes)
+            let presses = presses
+            Thread.detachNewThread {
+                for _ in 0..<18 {
+                    let batch = codes.shuffled().prefix(8)
+                    for code in batch { presses.add(code, isDown: true) }
+                    Thread.sleep(forTimeInterval: 0.12)
+                    for code in batch { presses.add(code, isDown: false) }
+                    Thread.sleep(forTimeInterval: 0.18)
+                }
+            }
+        }
         // Тот же путь завершения, что у настоящего unlock(): finished → idle → скрытие.
         Task {
             try? await Task.sleep(for: .seconds(6))
@@ -259,6 +275,8 @@ final class LockController {
         blocker.passRect = .null
         sleepGuard.end()
         enforceLockState()
+        // Клавиши, которые держали в момент снятия, отпускания уже не пришлют.
+        for visual in keyVisuals.values where visual.isDown { visual.isDown = false }
         savedCapsLock = nil
         savedInputSource = nil
     }
@@ -270,13 +288,35 @@ final class LockController {
         if let savedInputSource { InputSourceGuard.restore(savedInputSource) }
     }
 
-    private func registerPress(_ rawCode: UInt16) {
+    private func registerPresses(_ batch: [PressBuffer.Press]) {
         guard isLocked else { return }
-        let code = KeyLayout.canonical(rawCode)
-        if code == UInt16(kVK_CapsLock) { enforceLockState() }
-        cleanedKeys.insert(code)
-        pulses[code, default: 0] += 1
-        pressCount += 1
+        for press in batch {
+            let code = KeyLayout.canonical(press.code)
+            if code == UInt16(kVK_CapsLock) {
+                enforceLockState()
+                // Caps Lock не присылает отпускание — «отпускаем» сами.
+                if press.isDown {
+                    Task { [weak self] in
+                        try? await Task.sleep(for: .milliseconds(160))
+                        self?.keyVisuals[code]?.isDown = false
+                    }
+                }
+            }
+            guard let visual = keyVisuals[code] else { continue }
+            if visual.isDown != press.isDown { visual.isDown = press.isDown }
+            if press.isDown, !visual.isCleaned {
+                visual.isCleaned = true
+                cleanedCount += 1
+            }
+        }
+    }
+
+    private func resetKeyVisuals() {
+        for visual in keyVisuals.values {
+            visual.isDown = false
+            visual.isCleaned = false
+        }
+        cleanedCount = 0
     }
 
     private func playSound(_ name: String) {

@@ -24,6 +24,7 @@
 		C754083586486041618517DE /* WindowPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A730C3A7E5604D48D6AAD80 /* WindowPresenter.swift */; };
 		DEE88102141D6B6E333ABBC4 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB535B5707383ED9F8A6A23 /* MainView.swift */; };
 		E9CCF0327F60B229517CD5CB /* SystemGuards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EDA76E82423C64468968234 /* SystemGuards.swift */; };
+		ECE7BCE9EFA82809EDECBEC3 /* KeyPresses.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28CFCD46073E81EE190DF73 /* KeyPresses.swift */; };
 		F4A06861FE68FDF3EEA53A75 /* MenuBarPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0199FCCE33DB6C37D525975 /* MenuBarPanel.swift */; };
 		FE92DC5DD1C58F67C1AC810B /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0983E23F6B4E5A2C69251C13 /* Theme.swift */; };
 /* End PBXBuildFile section */
@@ -43,6 +44,7 @@
 		94D96F92B7C0598CE0DEA82B /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		AB19CDC62358299B3FCC6182 /* OverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindowController.swift; sourceTree = "<group>"; };
 		B0199FCCE33DB6C37D525975 /* MenuBarPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanel.swift; sourceTree = "<group>"; };
+		D28CFCD46073E81EE190DF73 /* KeyPresses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyPresses.swift; sourceTree = "<group>"; };
 		D40A3FF1FF59873FE94261A1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D6BC68DE622FB599BB97C0C4 /* LockOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockOverlayView.swift; sourceTree = "<group>"; };
 		E48839CDCCE94FAE10268C69 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -77,6 +79,7 @@
 			children = (
 				39C91CFF808DA7EA79A662AD /* EventBlocker.swift */,
 				EC604D7DB1B223373C91EDE3 /* HotKey.swift */,
+				D28CFCD46073E81EE190DF73 /* KeyPresses.swift */,
 				61E801875B29EA33E55C15D1 /* LockController.swift */,
 				7BE2CC8A2D3B2086B38288CF /* Permissions.swift */,
 				0EDA76E82423C64468968234 /* SystemGuards.swift */,
@@ -228,6 +231,7 @@
 				AE2F3E547193A358B2F16041 /* EventBlocker.swift in Sources */,
 				5D97BF204401FF4DC095D192 /* HotKey.swift in Sources */,
 				BB7206AC147DE914F2BFBBB5 /* KeyLayout.swift in Sources */,
+				ECE7BCE9EFA82809EDECBEC3 /* KeyPresses.swift in Sources */,
 				C11BA82F0939FD6FE7AA45C5 /* KeyboardMapView.swift in Sources */,
 				BF0E0FE7DF2B215F35C1E691 /* LockController.swift in Sources */,
 				3AFEDD804199C25F3CE97ACD /* LockOverlayView.swift in Sources */,
@@ -300,7 +304,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -389,7 +393,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

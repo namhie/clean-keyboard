@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Схема клавиатуры MacBook: нажатая клавиша вспыхивает и остаётся подсвеченной как «протёртая».
+/// Схема клавиатуры MacBook: клавиша «нажимается», пока её держат, и остаётся подсвеченной как «протёртая».
 struct KeyboardMapView: View {
     let controller: LockController
 
@@ -12,12 +12,11 @@ struct KeyboardMapView: View {
     private var unit: CGFloat { Self.unit }
     private var gap: CGFloat { Self.gap }
 
-    private var rows: [[KeySpec]] {
-        KeyLayout.rows(for: controller.keyboardKind, cyrillic: KeyLayout.showsCyrillic)
-    }
+    /// Раскладка не меняется во время работы — считаем один раз.
+    private static let rows = KeyLayout.rows(for: KeyLayout.currentKind, cyrillic: KeyLayout.showsCyrillic)
 
     var body: some View {
-        let rows = rows
+        let rows = Self.rows
         VStack(alignment: .leading, spacing: gap) {
             ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                 HStack(alignment: .bottom, spacing: gap) {
@@ -30,6 +29,10 @@ struct KeyboardMapView: View {
                 }
             }
         }
+        .padding(12)
+        // Вся схема рисуется одним слоем через Metal — десятки одновременных анимаций не тормозят.
+        .drawingGroup()
+        .padding(-12)
     }
 
     private var arrowCluster: some View {
@@ -50,8 +53,7 @@ struct KeyboardMapView: View {
             // Ширина в юнитах с учётом зазоров — так все ряды получаются одинаковой длины.
             width: key.width * (unit + gap) - gap,
             height: height,
-            isCleaned: key.code.map(controller.cleanedKeys.contains) ?? false,
-            pulse: key.code.flatMap { controller.pulses[$0] } ?? 0
+            visual: key.code.flatMap { controller.keyVisuals[$0] }
         )
     }
 }
@@ -60,13 +62,11 @@ private struct KeyCapView: View {
     let key: KeySpec
     let width: CGFloat
     let height: CGFloat
-    let isCleaned: Bool
-    let pulse: Int
+    /// `nil` — клавиша без keyCode (Touch ID).
+    let visual: KeyVisual?
 
-    private struct PulseValue {
-        var scale: CGFloat = 1
-        var glow: Double = 0
-    }
+    private var isDown: Bool { visual?.isDown ?? false }
+    private var isCleaned: Bool { visual?.isCleaned ?? false }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: min(7, height * 0.24), style: .continuous)
@@ -74,33 +74,27 @@ private struct KeyCapView: View {
         label
             .frame(width: width, height: height)
             .background {
-                shape.fill(isCleaned ? AnyShapeStyle(Theme.accentGradient.opacity(0.5)) : AnyShapeStyle(.white.opacity(0.06)))
+                ZStack {
+                    shape.fill(.white.opacity(0.06))
+                    shape.fill(Theme.accentGradient).opacity(isCleaned ? 0.5 : 0)
+                    shape.fill(Theme.mint).opacity(isDown ? 0.55 : 0)
+                }
             }
             .overlay {
                 shape.strokeBorder(
                     LinearGradient(
-                        colors: [.white.opacity(isCleaned ? 0.6 : 0.18), .white.opacity(isCleaned ? 0.25 : 0.05)],
+                        colors: [.white.opacity(isDown ? 0.95 : isCleaned ? 0.6 : 0.18),
+                                 .white.opacity(isDown ? 0.5 : isCleaned ? 0.25 : 0.05)],
                         startPoint: .top, endPoint: .bottom
                     ),
                     lineWidth: 1
                 )
             }
-            .animation(.easeOut(duration: 0.4), value: isCleaned)
-            .keyframeAnimator(initialValue: PulseValue(), trigger: pulse) { content, value in
-                content
-                    .scaleEffect(value.scale)
-                    .brightness(value.glow * 0.35)
-                    .shadow(color: Theme.mint.opacity(value.glow * 0.9), radius: 14 * value.glow)
-            } keyframes: { _ in
-                KeyframeTrack(\.scale) {
-                    SpringKeyframe(0.84, duration: 0.07)
-                    SpringKeyframe(1.0, duration: 0.45, spring: .bouncy)
-                }
-                KeyframeTrack(\.glow) {
-                    LinearKeyframe(1, duration: 0.05)
-                    CubicKeyframe(0, duration: 0.7)
-                }
-            }
+            .shadow(color: Theme.mint.opacity(isDown ? 0.8 : 0), radius: isDown ? 10 : 0)
+            .scaleEffect(isDown ? 0.88 : 1)
+            // Пружина подхватывает текущую скорость: частые и одновременные нажатия не дёргаются.
+            .animation(.spring(response: 0.22, dampingFraction: 0.62), value: isDown)
+            .animation(.easeOut(duration: 0.35), value: isCleaned)
     }
 
     @ViewBuilder

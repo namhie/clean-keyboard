@@ -17,7 +17,8 @@ nonisolated final class EventBlocker: @unchecked Sendable {
     }
 
     private let state = Mutex(State())
-    private let onKey: @Sendable (UInt16) -> Void
+    /// keyCode и нажата/отпущена — для анимации клавиш на схеме.
+    private let onKey: @Sendable (UInt16, Bool) -> Void
 
     // Только главный поток (start/stop).
     private var runLoop: CFRunLoop?
@@ -30,7 +31,7 @@ nonisolated final class EventBlocker: @unchecked Sendable {
         set { tapLock.withLock { tapStorage = newValue } }
     }
 
-    init(onKey: @escaping @Sendable (UInt16) -> Void) {
+    init(onKey: @escaping @Sendable (UInt16, Bool) -> Void) {
         self.onKey = onKey
     }
 
@@ -120,18 +121,18 @@ nonisolated final class EventBlocker: @unchecked Sendable {
 
         case CGEventType.keyDown.rawValue:
             if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
-                onKey(UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)))
+                onKey(UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)), true)
             }
             return nil
 
         case CGEventType.keyUp.rawValue:
+            onKey(UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)), false)
             return nil
 
         case CGEventType.flagsChanged.rawValue:
             let code = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
-            if Self.isModifierPress(code: code, flags: event.flags) {
-                onKey(code)
-            }
+            // Caps Lock присылает одно событие на нажатие (без отпускания) — контроллер «отпустит» сам.
+            onKey(code, code == 57 || Self.isModifierPress(code: code, flags: event.flags))
             return nil
 
         case Self.systemDefinedType:
@@ -149,8 +150,10 @@ nonisolated final class EventBlocker: @unchecked Sendable {
             if subtype == 8 {
                 let keyType = UInt16(truncatingIfNeeded: (data1 & 0xFFFF_0000) >> 16)
                 if keyType == 6 { return pass }
-                let isDown = (data1 & 0xFF00) >> 8 == 0x0A
-                if isDown { onKey(KeyLayout.mediaFlag | keyType) }
+                let keyState = (data1 & 0xFF00) >> 8
+                if keyState == 0x0A || keyState == 0x0B {
+                    onKey(KeyLayout.mediaFlag | keyType, keyState == 0x0A)
+                }
                 return nil
             }
             return blocksPointer ? nil : pass
@@ -211,7 +214,7 @@ nonisolated final class EventBlocker: @unchecked Sendable {
         return types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1)) }
     }
 
-    /// flagsChanged приходит и на нажатие, и на отпускание; считаем только нажатие.
+    /// flagsChanged приходит и на нажатие, и на отпускание; `true` — нажатие.
     private static func isModifierPress(code: UInt16, flags: CGEventFlags) -> Bool {
         switch Int(code) {
         case 56, 60: flags.contains(.maskShift)
