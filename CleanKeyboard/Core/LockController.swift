@@ -19,7 +19,12 @@ final class LockController {
     static let countdownSeconds = 3
     static let extraTime: TimeInterval = 30
 
-    private(set) var phase: Phase = .idle
+    private(set) var phase: Phase = .idle {
+        didSet {
+            // Страховка: без сеанса оверлея на экране быть не должно.
+            if phase == .idle, overlay.isShowing { overlay.hide() }
+        }
+    }
     private(set) var mode: LockMode = .keyboard
     private(set) var startedAt = Date()
     private(set) var deadline: Date?
@@ -127,8 +132,8 @@ final class LockController {
         guard case .countdown = phase else { return }
         sessionTask?.cancel()
         sessionTask = nil
-        overlay.hide()
         phase = .idle
+        overlay.hide()
     }
 
     func addTime() {
@@ -147,8 +152,9 @@ final class LockController {
         sessionTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.6))
             guard !Task.isCancelled else { return }
-            self?.overlay.hide()
+            // Сначала фаза, потом скрытие: скрытие само шлёт уведомления об экранах.
             self?.phase = .idle
+            self?.overlay.hide()
         }
     }
 
@@ -158,12 +164,18 @@ final class LockController {
         sessionTask?.cancel()
         sessionTask = nil
         if isLocked { release() }
-        overlay.hide(animated: false)
         phase = .idle
+        overlay.hide(animated: false)
     }
 
     private func screensChanged() {
-        guard isActive else { return }
+        // Только во время отсчёта или блокировки, только при реальной смене мониторов
+        // и только если оверлей ещё на экране — иначе можно «воскресить» его после снятия.
+        switch phase {
+        case .countdown, .locked: break
+        case .idle, .finished: return
+        }
+        guard overlay.isShowing, overlay.screensChanged else { return }
         guard !NSScreen.screens.isEmpty else {
             emergencyUnlock()
             return
@@ -192,10 +204,13 @@ final class LockController {
         default: .locked
         }
         overlay.show(controller: self)
+        // Тот же путь завершения, что у настоящего unlock(): finished → idle → скрытие.
         Task {
-            try? await Task.sleep(for: .seconds(8))
-            overlay.hide()
+            try? await Task.sleep(for: .seconds(6))
+            if phase == .locked { phase = .finished }
+            try? await Task.sleep(for: .seconds(1.6))
             phase = .idle
+            overlay.hide()
         }
     }
     #endif

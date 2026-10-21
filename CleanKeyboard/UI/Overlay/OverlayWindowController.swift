@@ -16,6 +16,14 @@ private final class FirstMouseHostingView<Content: View>: NSHostingView<Content>
 /// Показывает оверлей на всех экранах поверх всего, включая полноэкранные приложения.
 final class OverlayWindowController {
     private var windows: [NSWindow] = []
+    /// Рамки экранов, под которые построен оверлей.
+    private var builtForScreens: [CGRect] = []
+
+    var isShowing: Bool { !windows.isEmpty }
+
+    /// Изменился ли набор или размер мониторов. Скрытие Dock и строки меню тоже присылает
+    /// didChangeScreenParameters, но frame экранов при этом не меняется.
+    var screensChanged: Bool { NSScreen.screens.map(\.frame) != builtForScreens }
 
     func show(controller: LockController) {
         hide(animated: false)
@@ -74,8 +82,10 @@ final class OverlayWindowController {
             if isPrimary { window.makeKey() }
             windows.append(window)
         }
+        builtForScreens = screens.map(\.frame)
 
-        NSApp.presentationOptions = [.hideDock, .hideMenuBar]
+        applyKioskOptions()
+        startKioskObserver()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.35
             for window in windows { window.animator().alphaValue = 1 }
@@ -85,7 +95,9 @@ final class OverlayWindowController {
     func hide(animated: Bool = true) {
         let closing = windows
         windows = []
+        builtForScreens = []
         guard !closing.isEmpty else { return }
+        stopKioskObserver()
         NSApp.presentationOptions = []
 
         guard animated else {
@@ -98,6 +110,40 @@ final class OverlayWindowController {
         } completionHandler: {
             MainActor.assumeIsolated { closing.forEach { $0.orderOut(nil) } }
         }
+    }
+
+    // MARK: - Режим киоска
+
+    /// Mission Control, App Exposé и ⌘Tab обрабатывает Dock — тап их не видит.
+    /// `.disableProcessSwitching` отключает переключение приложений и всё Exposé (требует `.hideDock`).
+    /// Force Quit намеренно не отключаем: если приложение зависнет, его можно будет закрыть.
+    private static let kioskOptions: NSApplication.PresentationOptions = [
+        .hideDock, .hideMenuBar, .disableProcessSwitching, .disableHideApplication,
+    ]
+
+    private var activeObserver: NSObjectProtocol?
+
+    /// Опции действуют, только пока приложение активно, поэтому активируемся и переприменяем их.
+    private func applyKioskOptions() {
+        NSApp.activate()
+        NSApp.presentationOptions = Self.kioskOptions
+    }
+
+    private func startKioskObserver() {
+        guard activeObserver == nil else { return }
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isShowing else { return }
+                NSApp.presentationOptions = Self.kioskOptions
+            }
+        }
+    }
+
+    private func stopKioskObserver() {
+        if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
+        activeObserver = nil
     }
 
     /// Карточку показываем на встроенном дисплее MacBook — на него смотрят, когда протирают клавиатуру.
