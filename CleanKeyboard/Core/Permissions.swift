@@ -43,11 +43,24 @@ final class Permissions {
     }
 
     /// Показывает системный запрос и открывает нужную панель Системных настроек.
+    ///
+    /// Системный запрос нужен: только он добавляет приложение в список «Универсального доступа».
+    /// Но macOS показывает его один раз, и у него своя кнопка «Открыть Системные настройки».
+    /// Поэтому настройки открываем сами, только если запрос не появился — иначе будет два окна.
     func request() {
-        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
-        openSettings()
         startPolling()
+        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+        if AXIsProcessTrustedWithOptions(options) {
+            refresh()
+            return
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(800))
+            // Запрос показывает отдельный системный процесс — если он появился, фокус ушёл к нему.
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+                openSettings()
+            }
+        }
     }
 
     func openSettings() {
